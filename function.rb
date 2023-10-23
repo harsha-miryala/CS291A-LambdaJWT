@@ -4,6 +4,11 @@ require 'json'
 require 'jwt'
 require 'pp'
 
+HEADERS = "headers"
+AUTH = "authorization"
+PATH = "path"
+CONTTYPE = "content-type"
+
 def main(event:, context:)
   # You shouldn't need to use context, but its fields are explained here:
   # https://docs.aws.amazon.com/lambda/latest/dg/ruby-context.html
@@ -17,7 +22,7 @@ def main(event:, context:)
       event[HEADERS][AUTH] = event[HEADERS][header]
     end
   end
-  
+
   case event["httpMethod"]
   when "GET"
     begin
@@ -34,13 +39,10 @@ def main(event:, context:)
       end
       
       token = event[HEADERS][AUTH].split(" ")[1]
-      payload = JWT.decode(token, "SECRET_KEY")
+      payload = JWT.decode(token, ENV['JWT_SECRET'])
       
     rescue JWT::ImmatureSignature, JWT::ExpiredSignature => e
       return response(body: nil, status: 401)
-      
-    rescue JWT::DecodeError => e
-      return response(body: nil, status: 403)
       
     rescue
       return response(body: nil, status: 403)
@@ -48,7 +50,6 @@ def main(event:, context:)
     else
       return response(body: payload[0]["data"], status: 200)
     end
-    
   when "POST"
     if event[PATH] == "/"
       return response(body: nil, status: 405)
@@ -65,14 +66,13 @@ def main(event:, context:)
     else
       payload = {
         data: JSON.parse(event["body"]),
-        exp: Time.now.to_i + 10,
-        nbf: Time.now.to_i
+        exp: Time.now.to_i + 5,
+        nbf: Time.now.to_i + 2
       }
       
-      token = JWT.encode payload, "SECRET_KEY", 'HS256'
+      token = JWT.encode payload, ENV['JWT_SECRET'], 'HS256'
       return response(body: {"token" => token}, status: 201)
     end
-  
   else
     return response(body: nil, status: 405)
   end
@@ -89,7 +89,7 @@ if $PROGRAM_NAME == __FILE__
   # If you run this file directly via `ruby function.rb` the following code
   # will execute. You can use the code below to help you test your functions
   # without needing to deploy first.
-  ENV['JWT_SECRET'] = 'NOTASECRET'
+  ENV['JWT_SECRET'] = 'ITSASECRET'
 
   # Call /token
   PP.pp main(context: {}, event: {
